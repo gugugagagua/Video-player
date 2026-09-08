@@ -88,3 +88,4 @@ gradlew assembleDebug
 - 媒体库：应用私有数据库（Room）
 - 封面：应用私有目录 `files/covers/`
 - 视频文件本身不做拷贝，通过 SAF 授权读取原始位置
+"# Video-player" 
