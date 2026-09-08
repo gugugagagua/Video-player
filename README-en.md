@@ -39,7 +39,7 @@ The output is located in `app/build/outputs/apk/debug/`.
 
 ## Usage
 
-### Media Library Directory (recommended, matches the PC experience)
+### Media Library Directory (recommended)
 
 On first launch you will be guided to set up a **media library root directory**. Afterwards, place your videos in the following structure:
 
