@@ -1,4 +1,5 @@
 # 视频集播放器（Android）
+[**English**](./README-en.md) | [**简体中文**](./README.md)
 #该软件由AI辅助完成
 
 ## 技术栈
