@@ -1,5 +1,5 @@
-# Video Set Player (Android)
 [**简体中文**](./README.md)|[**English**](./README-en.md)  
+# Video Set Player (Android)
 #This software was developed with AI assistance
 
 An Android app ported from the features of the desktop version of *Video Player* (PyQt6).
