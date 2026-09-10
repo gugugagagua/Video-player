@@ -6,9 +6,11 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.room.withTransaction
 import com.example.videoplayer.data.db.AppDatabase
 import com.example.videoplayer.data.model.Group
+import com.example.videoplayer.data.model.LastWatched
 import com.example.videoplayer.data.model.Video
 import com.example.videoplayer.data.model.VideoCollection
 import com.example.videoplayer.data.model.VideoCount
+import com.example.videoplayer.data.model.VideoSearchResult
 import com.example.videoplayer.media.CoverManager
 import com.example.videoplayer.media.VideoScanner
 import kotlinx.coroutines.Dispatchers
@@ -329,6 +331,27 @@ class LibraryRepository(
     // ---- 视频 ----
 
     fun observeVideoCounts(): Flow<List<VideoCount>> = videoDao.observeCounts()
+
+    /** 各视频集「看到第几集」 */
+    fun observeLastWatched(): Flow<List<LastWatched>> = videoDao.observeLastWatched()
+
+    /** 按视频文件名搜索（含所属视频集） */
+    suspend fun searchVideos(query: String): List<VideoSearchResult> {
+        val q = query.trim()
+        return if (q.isBlank()) emptyList() else videoDao.searchVideos(q)
+    }
+
+    /**
+     * 补全缺失的视频时长（用于进度可视化）。
+     * 只处理有观看记录但缺时长的条目，并限制数量以免阻塞。
+     */
+    suspend fun ensureDurations(collectionId: Long, limit: Int = 30) {
+        val targets = videoDao.getMissingDurations(collectionId).take(limit)
+        targets.forEach { video ->
+            val duration = CoverManager.extractDuration(context, Uri.parse(video.fileUri))
+            if (duration > 0) videoDao.updateDuration(video.id, duration)
+        }
+    }
 
     fun observeVideos(collectionId: Long): Flow<List<Video>> =
         videoDao.observeByCollection(collectionId)

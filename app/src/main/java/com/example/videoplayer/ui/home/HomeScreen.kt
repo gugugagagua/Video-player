@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +45,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -53,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
@@ -159,20 +164,57 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("视频集")
-                        uiState.libraryRootLabel?.let { label ->
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                    if (uiState.isSearching) {
+                        TextField(
+                            value = uiState.searchQuery,
+                            onValueChange = viewModel::setSearchQuery,
+                            placeholder = { Text("搜索视频集 / 视频文件") },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Column {
+                            Text("视频集")
+                            uiState.libraryRootLabel?.let { label ->
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                },
+                navigationIcon = {
+                    if (uiState.isSearching) {
+                        IconButton(onClick = { viewModel.closeSearch() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "退出搜索"
                             )
                         }
                     }
                 },
                 actions = {
+                    if (uiState.isSearching) {
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                Icon(Icons.Default.Close, contentDescription = "清除")
+                            }
+                        }
+                        return@TopAppBar
+                    }
+                    IconButton(onClick = { viewModel.openSearch() }) {
+                        Icon(Icons.Default.Search, contentDescription = "搜索")
+                    }
                     // 导入：视频文件 / 压缩包 / 文件夹
                     IconButton(onClick = { showImportMenu = true }) {
                         Icon(Icons.Default.Download, contentDescription = "导入")
@@ -250,7 +292,17 @@ fun HomeScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
-            if (uiState.gridItems.isEmpty()) {
+            if (uiState.isSearching) {
+                SearchResultList(
+                    query = uiState.searchQuery,
+                    collections = uiState.searchCollections,
+                    videos = uiState.searchVideos,
+                    videoCounts = uiState.videoCounts,
+                    lastWatched = uiState.lastWatched,
+                    onOpenCollection = { id -> onOpenCollection(id, null, 0L) },
+                    onOpenVideo = { video -> onOpenCollection(video.collectionId, video.id, 0L) }
+                )
+            } else if (uiState.gridItems.isEmpty()) {
                 EmptyState(
                     title = if (uiState.currentGroupId != null) "该分组还没有视频集" else "还没有视频集",
                     subtitle = if (uiState.hasLibraryRoot) {
@@ -283,14 +335,20 @@ fun HomeScreen(
                                 onClick = { viewModel.enterGroup(item.group.id) },
                                 onLongClick = { actionGroup = item.group }
                             )
-                            is GridItem.CollectionItem -> CollectionCard(
-                                collection = item.collection,
-                                videoCount = uiState.videoCounts[item.collection.id] ?: 0,
-                                onClick = {
-                                    onOpenCollection(item.collection.id, null, 0L)
-                                },
-                                onLongClick = { actionCollection = item.collection }
-                            )
+                            is GridItem.CollectionItem -> {
+                                val count = uiState.videoCounts[item.collection.id] ?: 0
+                                val watched = uiState.lastWatched[item.collection.id]
+                                CollectionCard(
+                                    collection = item.collection,
+                                    videoCount = count,
+                                    watchedIndex = watched,
+                                    isFinished = watched != null && count > 0 && watched >= count,
+                                    onClick = {
+                                        onOpenCollection(item.collection.id, null, 0L)
+                                    },
+                                    onLongClick = { actionCollection = item.collection }
+                                )
+                            }
                         }
                     }
                 }

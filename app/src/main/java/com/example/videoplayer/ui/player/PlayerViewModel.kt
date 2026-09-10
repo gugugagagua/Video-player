@@ -162,7 +162,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun togglePlaylist() {
-        _uiState.update { it.copy(showList = !it.showList) }
+        val open = !_uiState.value.showList
+        _uiState.update { it.copy(showList = open) }
+        // 打开列表时刷新进度与时长，保证「已看/未看」与进度条准确
+        if (open) refreshPlaylist()
+    }
+
+    /**
+     * 刷新播放列表数据：补全缺失时长（限量）后重新读取，
+     * 使列表中的观看进度可视化立即生效。
+     */
+    private fun refreshPlaylist() {
+        viewModelScope.launch {
+            val collectionId = _uiState.value.collectionId
+            if (collectionId <= 0L) return@launch
+            runCatching { repository.ensureDurations(collectionId, limit = 30) }
+            val videos = runCatching { repository.getVideos(collectionId) }.getOrNull()
+                ?: return@launch
+            val currentId = _uiState.value.currentVideo?.id
+            _uiState.update { s ->
+                val idx = videos.indexOfFirst { it.id == currentId }
+                    .takeIf { it >= 0 } ?: s.currentIndex
+                s.copy(playlist = videos, currentIndex = idx)
+            }
+        }
     }
 
     fun closePlaylist() {

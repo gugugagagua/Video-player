@@ -10,12 +10,15 @@ import com.example.videoplayer.VideoPlayerApp
 import com.example.videoplayer.data.SettingsStore
 import com.example.videoplayer.data.model.Group
 import com.example.videoplayer.data.model.VideoCollection
+import com.example.videoplayer.data.model.VideoSearchResult
 import com.example.videoplayer.data.repository.LibraryRepository
 import com.example.videoplayer.media.ConfirmedImport
 import com.example.videoplayer.media.ImportDestination
 import com.example.videoplayer.media.NameMerger
 import com.example.videoplayer.media.PendingImport
 import com.example.videoplayer.media.VideoImporter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -66,7 +69,17 @@ data class HomeUiState(
     /** 智能归并建议（公共部分相同的文件） */
     val mergeGroups: List<NameMerger.MergeGroup> = emptyList(),
     /** 是否正在执行导入 */
-    val isImportingFiles: Boolean = false
+    val isImportingFiles: Boolean = false,
+    /** 各视频集「看到第几集」（collectionId → 集号，1 起） */
+    val lastWatched: Map<Long, Int> = emptyMap(),
+    /** 搜索关键词 */
+    val searchQuery: String = "",
+    /** 搜索命中的视频集 */
+    val searchCollections: List<VideoCollection> = emptyList(),
+    /** 搜索命中的视频文件 */
+    val searchVideos: List<VideoSearchResult> = emptyList(),
+    /** 是否处于搜索模式 */
+    val isSearching: Boolean = false
 )
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -92,6 +105,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val mergeGroups = MutableStateFlow<List<NameMerger.MergeGroup>>(emptyList())
     private val isImportingFiles = MutableStateFlow(false)
     private val setupVisible = MutableStateFlow(false)
+
+    /** 搜索状态 */
+    private val searchQuery = MutableStateFlow("")
+    private val searchVideoResults = MutableStateFlow<List<VideoSearchResult>>(emptyList())
+    private val isSearching = MutableStateFlow(false)
+    private var searchJob: Job? = null
 
     private val importer = VideoImporter(application)
 
@@ -131,6 +150,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         .combine(mergeGroups) { state, groups -> state.copy(mergeGroups = groups) }
         .combine(isImportingFiles) { state, importing -> state.copy(isImportingFiles = importing) }
         .combine(setupVisible) { state, setup -> state.copy(showSetup = setup) }
+        .combine(repository.observeLastWatched()) { state, watched ->
+            state.copy(lastWatched = watched.associate { it.collectionId to it.sortOrder + 1 })
+        }
+        .combine(searchQuery) { state, q -> state.copy(searchQuery = q) }
+        .combine(searchVideoResults) { state, videos ->
+            // 视频集按名称在内存过滤（数量有限，避免额外查询）
+            val matchedCollections = if (state.searchQuery.isBlank()) emptyList()
+            else state.allCollections.filter {
+                it.name.contains(state.searchQuery, ignoreCase = true)
+            }
+            state.copy(searchCollections = matchedCollections, searchVideos = videos)
+        }
+        .combine(isSearching) { state, searching -> state.copy(isSearching = searching) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     init {
@@ -139,6 +171,39 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // 已设置媒体库目录时，启动自动扫描一次（与桌面版打开即可见的行为一致）
         if (settings.autoScanOnLaunch && rootState.value.hasRoot) {
             scanLibrary()
+        }
+    }
+
+    // ───────── 搜索 ─────────
+
+    /** 进入搜索模式 */
+    fun openSearch() {
+        isSearching.value = true
+    }
+
+    /** 退出搜索模式并清空关键词 */
+    fun closeSearch() {
+        searchJob?.cancel()
+        isSearching.value = false
+        searchQuery.value = ""
+        searchVideoResults.value = emptyList()
+    }
+
+    /**
+     * 实时搜索：视频集名走内存过滤，视频文件名走数据库模糊匹配（防抖 250ms）。
+     */
+    fun setSearchQuery(query: String) {
+        searchQuery.value = query
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            searchVideoResults.value = emptyList()
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(250)
+            val results = runCatching { repository.searchVideos(query) }.getOrDefault(emptyList())
+            // 关键词已变化则丢弃过期结果
+            if (searchQuery.value == query) searchVideoResults.value = results
         }
     }
 

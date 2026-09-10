@@ -29,11 +29,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
@@ -746,6 +748,26 @@ private fun PlaylistSheet(
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             itemsIndexed(playlist, key = { _, video -> video.id }) { index, video ->
                 val isCurrent = index == currentIndex
+                // 观看状态：已看完 / 看到 mm:ss / 未看
+                val progress = if (video.duration > 0L) {
+                    (video.lastPosition.toFloat() / video.duration).coerceIn(0f, 1f)
+                } else 0f
+                val isFinished = video.duration > 0L && progress >= 0.95f
+                val hasProgress = video.lastPosition > 0L
+                val statusText = when {
+                    isFinished -> "已看完"
+                    hasProgress && video.duration > 0L ->
+                        "看到 ${FormatUtils.formatDuration(video.lastPosition)} / " +
+                            FormatUtils.formatDuration(video.duration)
+                    hasProgress -> "看到 ${FormatUtils.formatDuration(video.lastPosition)}"
+                    else -> "未看"
+                }
+                val statusColor = when {
+                    isCurrent -> MaterialTheme.colorScheme.primary
+                    isFinished -> Color(0xFF7CD98A)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -760,13 +782,17 @@ private fun PlaylistSheet(
                                 Color.Transparent
                             }
                         )
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (isCurrent) Icons.Default.PlayArrow else Icons.AutoMirrored.Filled.PlaylistPlay,
+                        imageVector = when {
+                            isCurrent -> Icons.Default.PlayArrow
+                            isFinished -> Icons.Default.CheckCircle
+                            else -> Icons.Default.RadioButtonUnchecked
+                        },
                         contentDescription = null,
-                        tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = statusColor,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
@@ -779,12 +805,32 @@ private fun PlaylistSheet(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (video.lastPosition > 0) {
-                            Text(
-                                text = "上次播放到 ${FormatUtils.formatDuration(video.lastPosition)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusColor
+                        )
+                        // 单集进度条
+                        if (hasProgress) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(progress)
+                                        .height(3.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isFinished) Color(0xFF7CD98A)
+                                            else MaterialTheme.colorScheme.primary
+                                        )
+                                )
+                            }
                         }
                     }
                 }
